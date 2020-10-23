@@ -108,7 +108,7 @@ class doubleInvertedPendulum(gym.Env):
 
     def reset(self):
         """Reset the simulation with small perturbations"""
-        self.state = np.array([0,0, np.pi/2, 0, np.pi/2, 0])#self.np_random.uniform(low=-0.5, high=0.5, size=(6,))
+        self.state = np.array([-2,0.85, np.pi, 2*np.pi, np.pi, 0])#self.np_random.uniform(low=-0.5, high=0.5, size=(6,))
         return self.state
 
     def render(self, mode='human'):
@@ -123,7 +123,7 @@ class doubleInvertedPendulum(gym.Env):
         robo_h = 0.5*robo_w
 
         # set scaling factor
-        w_world = 2 * x_limit + robo_w
+        w_world = 5 * x_limit + robo_w
         scale = w_window/w_world
 
         # track vertical location

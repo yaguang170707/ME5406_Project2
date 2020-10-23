@@ -5,13 +5,13 @@ force = 1
 g = 9.8
 
 # Mass of the cart
-M = 10000000000000
+M = 10
 
 # Mass of lower arm
 m1 = 1
 
 # Mass of upper arm
-m2 = 2
+m2 = 1
 
 # Length of lower arm
 L1 = 1
