@@ -1,3 +1,9 @@
+"""
+A gym environment for stabilising a frictionless double-inverted pendulum system. The equations of motion were derived
+by Yi, Yubazaki and Hirota 2001.
+url: https://www.sciencedirect.com/science/article/abs/pii/S0954181001000218
+"""
+
 import gym
 from gym import spaces
 import numpy as np
@@ -8,7 +14,48 @@ from problem_parameters import *
 
 
 class doubleInvertedPendulum(gym.Env):
-    """This is a custom environment, which defines a double inverted pendulum problem."""
+    """
+    Description:
+        This is a custom environment, which defines a double inverted pendulum problem. There is no friction
+        between the robot and the horizontal track, as well as the two arm joints.
+
+    Source:
+        This system is equivalent to the one described in Yi, Yubazaki and Hirota 2001.
+
+    Observation:
+        Type: Box(6)
+        Num     Observation                                 Min             Max
+        0       Robot horizontal position                   -x_limit        x_limit
+        1       Robot horizontal velocity                   -inf            inf
+        2       Angle between lower arm and vertical axis   -alpha_limit    alpha_limit
+        3       Angular velocity of lower arm               -inf            inf
+        4       Angle between upper arm and vertical axis   -beta_limit     beta_limit
+        6       Angular velocity of upper arm               -inf            inf
+
+        The min and max values, as well as other physical properties can be specified by user inputs in
+        problem_parameters.py file.
+
+    Action:
+        Type: Discrete(3)
+        Num     Action
+        0       Applying a left-pointing force
+        1       Do nothing
+        2       Applying a right-pointing force
+
+    Reward:
+        If the two arms are kept upright (within the thresholds), then a reward of 1 will be given
+
+    Starting State:
+        All observations are initialised with a perturbation within [-0.05..0.05]
+
+    Episode Termination:
+        Robot reaches horizontal thresholds;
+        The amplitude of the upper arm angle reaches beta_limit;
+        Robot survives through 500 steps.
+        Solved Requirements:
+        Considered solved when the average return is greater than or equal to
+        490.0 over 100 consecutive trials.
+    """
 
     def __init__(self):
 
@@ -36,11 +83,11 @@ class doubleInvertedPendulum(gym.Env):
         self.b32 = m2*L1*l2
 
         # bounds of state space
-        high = np.array([2 * x_limit,
+        high = np.array([x_limit,
                          np.finfo(np.float32).max,
-                         2 * alpha_limit,
+                         alpha_limit,
                          np.finfo(np.float32).max,
-                         2 * beta_limit,
+                         beta_limit,
                          np.finfo(np.float32).max],
                         dtype=np.float32)
 
@@ -48,20 +95,25 @@ class doubleInvertedPendulum(gym.Env):
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
+        # create seed for random initialisation
         self.seed()
+
+        # initialise viewer and state
         self.viewer = None
         self.state = None
 
+    # create seed for random initialisation
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
+    # simulate one step based on given action
     def step(self, action):
-        # Get state variables
+        # get state variables
         x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
 
-        # Calculate force
-        F = 0#(action-1)*force - 0.1*x_dot
+        # calculate force
+        F = (action-1)*force
 
         # update equation coefficients
         a12 = self.a12_without_cos_a * np.cos(alpha)
@@ -71,21 +123,20 @@ class doubleInvertedPendulum(gym.Env):
         a23 = self.a23_without_cos_a_m_b * np.cos(alpha - beta)
         a32 = a23
 
-        b1 = F + self.b11*alpha_dot**2*np.sin(alpha) + self.b12*beta_dot**2*np.sin(beta)
-        b2 = self.b21*np.sin(alpha) + self.b22*beta_dot**2*np.sin(alpha-beta)
-        b3 = self.b31*np.sin(beta) + self.b32*alpha_dot**2*np.sin(alpha-beta)
+        b1 = F + self.b11*(alpha_dot**2)*np.sin(alpha) + self.b12*(beta_dot**2)*np.sin(beta)
+        b2 = self.b21*np.sin(alpha) + self.b22*(beta_dot**2)*np.sin(alpha-beta)
+        b3 = self.b31*np.sin(beta) + self.b32*(alpha_dot**2)*np.sin(alpha-beta)
 
         # solving linearised dynamics equations
         A = np.array([[self.a11, a12, a13], [a21, self.a22, a23], [a31, a32, self.a33]])
         b = np.array([b1, b2, b3])
-        invA = np.linalg.inv(A)
-        x_2dot, alpha_2dot, beta_2dot = invA.dot(b)
+        x_2dot, alpha_2dot, beta_2dot = np.linalg.solve(A, b)
 
         # update state variables using specified time marching method
         if marching_method == 'euler':
             x = x + x_dot*dt
-            alpha = (alpha + alpha_dot*dt)%(2*np.pi)
-            beta = (beta+beta_dot*dt)%(2*np.pi)
+            alpha = (alpha + alpha_dot*dt)#%(2*np.pi)
+            beta = (beta+beta_dot*dt)#%(2*np.pi)
             x_dot += x_2dot*dt
             alpha_dot += alpha_2dot*dt
             beta_dot += beta_2dot*dt
@@ -100,15 +151,18 @@ class doubleInvertedPendulum(gym.Env):
 
         self.state = np.array([x, x_dot, alpha, alpha_dot, beta, beta_dot])
 
-        done = False
+        done = abs(x)>x_limit or abs(alpha)>alpha_limit or abs(beta)>beta_limit
 
-        reward = 1.
+        if not done:
+            reward = 1
+        else:
+            reward = 0
 
         return self.state, reward, done, {}
 
     def reset(self):
         """Reset the simulation with small perturbations"""
-        self.state = np.array([-2,0.85, np.pi, 2*np.pi, np.pi, 0])#self.np_random.uniform(low=-0.5, high=0.5, size=(6,))
+        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(6,))
         return self.state
 
     def render(self, mode='human'):
@@ -116,18 +170,15 @@ class doubleInvertedPendulum(gym.Env):
 
         # set window sizes
         w_window = 600
-        h_window = 400
+        h_window = 500
 
         # 'real' width and height of the robot
         robo_w = L1
         robo_h = 0.5*robo_w
 
         # set scaling factor
-        w_world = 5 * x_limit + robo_w
+        w_world = 6 * x_limit + robo_w
         scale = w_window/w_world
-
-        # track vertical location
-        carty = h_window/4
 
         # width of arm in the window
         w_arm = scale*L1/10
@@ -147,27 +198,49 @@ class doubleInvertedPendulum(gym.Env):
         # diameter of wheels in the window
         d_wheel = w_robo/4.
 
+        # robo vertical location
+        robo_y = d_wheel/2 + h_robo/2 + h_window/2
+
+        # track vertical location
+        track_y = robo_y - d_wheel/2 - h_robo/2
+
         # Initialise a Viewer object if not exist
         if self.viewer is None:
             from gym.envs.classic_control import rendering
-
-
 
             # create viewer with pre-defined window sizes
             self.viewer = rendering.Viewer(w_window, h_window)
 
             # set sides values of the robot
             l, r, t, b = -w_robo/2, w_robo/2, h_robo/2, -h_robo/2
-
             # create a graphical robot
             self.robo = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
-
             # create transform attribute and add it to the robot
             self.robo_trans = rendering.Transform()
             self.robo.add_attr(self.robo_trans)
-
             # add robo in viewer
             self.viewer.add_geom(self.robo)
+
+            # create a left wheel and add it in viewer
+            self.wheel_l = rendering.make_circle(d_wheel/2)
+            self.wheel_l_trans = rendering.Transform(translation=(-w_robo/4, -h_robo/2))
+            self.wheel_l.add_attr(self.wheel_l_trans)
+            self.wheel_l.add_attr(self.robo_trans)
+            self.wheel_l.set_color(.5, .5, .5)
+            self.viewer.add_geom(self.wheel_l)
+
+            # create a right wheel and add it in viewer
+            self.wheel_r = rendering.make_circle(d_wheel/2)
+            self.wheel_r_trans = rendering.Transform(translation=(w_robo/4, -h_robo/2))
+            self.wheel_r.add_attr(self.wheel_r_trans)
+            self.wheel_r.add_attr(self.robo_trans)
+            self.wheel_r.set_color(.5, .5, .5)
+            self.viewer.add_geom(self.wheel_r)
+
+            # create the track
+            self.track = rendering.Line((0, track_y), (w_window, track_y))
+            self.track.set_color(0, 0, 0)
+            self.viewer.add_geom(self.track)
 
             # set sides values of the lower arm
             l, r, t, b = -w_arm/2, w_arm/2, s_L1, 0
@@ -204,7 +277,7 @@ class doubleInvertedPendulum(gym.Env):
             self.joint_l = rendering.make_circle(w_arm/2)
             self.joint_l.add_attr(self.arm_l_trans)
             self.joint_l.add_attr(self.robo_trans)
-            self.joint_l.set_color(.5, .5, .8)
+            self.joint_l.set_color(.5, .5, .5)
             self.viewer.add_geom(self.joint_l)
 
             # create a upper joint and add it in viewer
@@ -212,31 +285,14 @@ class doubleInvertedPendulum(gym.Env):
             self.joint_u.add_attr(self.arm_u_trans)
             self.joint_u.add_attr(self.arm_l_trans)
             self.joint_u.add_attr(self.robo_trans)
-            self.joint_u.set_color(.5, .5, .8)
+            self.joint_u.set_color(.5, .5, .5)
             self.viewer.add_geom(self.joint_u)
-
-            # create a left wheel and add it in viewer
-            self.wheel_l = rendering.make_circle(d_wheel/2)
-            self.wheel_l_trans = rendering.Transform(translation=(-w_robo/4, -h_robo/2))
-            self.wheel_l.add_attr(self.wheel_l_trans)
-            self.wheel_l.add_attr(self.robo_trans)
-            self.wheel_l.set_color(.5, .5, .8)
-            self.viewer.add_geom(self.wheel_l)
-
-            # create a right wheel and add it in viewer
-            self.wheel_r = rendering.make_circle(d_wheel/2)
-            self.wheel_r_trans = rendering.Transform(translation=(w_robo/4, -h_robo/2))
-            self.wheel_r.add_attr(self.wheel_r_trans)
-            self.wheel_r.add_attr(self.robo_trans)
-            self.wheel_r.set_color(.5, .5, .8)
-            self.viewer.add_geom(self.wheel_r)
 
         if self.state is None:
             return None
 
         x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
         robo_x = x*scale + w_window / 2.0
-        robo_y = d_wheel/2 + robo_h/2+300
         self.robo_trans.set_translation(robo_x, robo_y)
         self.arm_l_trans.set_rotation(alpha)
         self.arm_u_trans.set_rotation((beta-alpha))
