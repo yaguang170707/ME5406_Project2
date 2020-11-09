@@ -1,7 +1,7 @@
 import numpy as np
 
 # Amplitude of applied force
-force = 0.2
+force = 0.5
 
 # Gravitational acceleration
 g = 9.8
@@ -28,10 +28,10 @@ l1 = .5 * L1
 l2 = .5 * L2
 
 # Horizontal movement boundary
-x_limit = 2.
+x_limit = 1.5
 
 # Lower arm degree limit
-alpha_limit = 20*np.pi/180.
+alpha_limit = 45*np.pi/180.
 
 # upper arm degree limit
 beta_limit = 20*np.pi/180.

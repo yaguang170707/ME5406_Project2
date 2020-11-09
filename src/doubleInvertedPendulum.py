@@ -92,7 +92,7 @@ class doubleInvertedPendulum(gym.Env):
                         dtype=np.float32)
 
         # action space and state space
-        self.action_space = spaces.Discrete(3)
+        self.action_space = spaces.Discrete(11)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # create seed for random initialisation
@@ -113,7 +113,7 @@ class doubleInvertedPendulum(gym.Env):
         x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
 
         # calculate force
-        F = (action-1)*force
+        F = (action-int(self.action_space.n/2))*force
 
         # update equation coefficients
         a12 = self.a12_without_cos_a * np.cos(alpha)
@@ -177,7 +177,7 @@ class doubleInvertedPendulum(gym.Env):
         robo_h = 0.5*robo_w
 
         # set scaling factor
-        w_world = 3 * x_limit + robo_w
+        w_world = 2 * x_limit + robo_w
         scale = w_window/w_world
 
         # width of arm in the window
@@ -199,7 +199,7 @@ class doubleInvertedPendulum(gym.Env):
         d_wheel = w_robo/4.
 
         # robo vertical location
-        robo_y = d_wheel/2 + h_robo/2 + h_window/2
+        robo_y = d_wheel/2 + h_robo/2 + h_window/5
 
         # track vertical location
         track_y = robo_y - d_wheel/2 - h_robo/2
