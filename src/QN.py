@@ -4,15 +4,14 @@ from tensorflow import keras
 from tensorflow.keras import layers
 import copy
 
-layer_size = 256
 
-
-def constructNN(input_size, output_size):
+def constructNN(input_size, output_size, layer_depth, layer_number):
     model = keras.Sequential()
 
-    model.add(layers.Dense(layer_size, input_shape=(input_size, ), activation='relu'))
-    model.add(layers.Dense(layer_size, activation='relu'))
-    # model.add(layers.Dense(layer_size, activation='relu'))
+    model.add(layers.Dense(layer_depth, input_shape=(input_size, ), activation='relu'))
+    for i in range(layer_number):
+        model.add(layers.Dense(layer_depth, activation='relu'))
+
     model.add(layers.Dense(output_size))
 
     model.compile(optimizer='adam',
@@ -24,9 +23,9 @@ def constructNN(input_size, output_size):
     return model
 
 
-class DQN():
-    def __init__(self, input_size, output_size):
-        self.model = constructNN(input_size, output_size)
+class QN():
+    def __init__(self, input_size, output_size, layer_depth, layer_number):
+        self.model = constructNN(input_size, output_size, layer_depth, layer_number)
 
     def predict(self, state):
         if len(state.shape) == 1:
