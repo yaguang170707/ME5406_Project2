@@ -1,25 +1,25 @@
 import numpy as np
 
 # Amplitude of applied force
-force = 1
+force = 0.2
 
 # Gravitational acceleration
 g = 9.8
 
 # Mass of the cart
-M = 1
+M = 0.5
 
 # Mass of lower arm
-m1 = 1
+m1 = 0.2
 
 # Mass of upper arm
-m2 = 1
+m2 = 0.2
 
 # Length of lower arm
-L1 = 1
+L1 = 0.6
 
 # Length of upper arm
-L2 = 1
+L2 = 0.6
 
 # Gravity centre of lower arm
 l1 = .5 * L1
@@ -28,17 +28,17 @@ l1 = .5 * L1
 l2 = .5 * L2
 
 # Horizontal movement boundary
-x_limit = 1.
+x_limit = 2.
 
 # Lower arm degree limit
-alpha_limit = 180*np.pi/180.
+alpha_limit = 20*np.pi/180.
 
 # upper arm degree limit
-beta_limit = 180*np.pi/180.
+beta_limit = 20*np.pi/180.
 
 # Time step
-dt = 0.01
+dt = 1/60.
 
 # time-marching methods, euler or semi-implicit euler
-marching_method = 'euler'#'semi-euler'
+marching_method = 'semi-euler'#'euler'#'semi-euler'
 

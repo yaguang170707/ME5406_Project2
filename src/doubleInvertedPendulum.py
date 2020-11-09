@@ -156,13 +156,13 @@ class doubleInvertedPendulum(gym.Env):
         if not done:
             reward = 1
         else:
-            reward = 0
+            reward = -100
 
         return self.state, reward, done, {}
 
     def reset(self):
         """Reset the simulation with small perturbations"""
-        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(6,))
+        self.state = self.np_random.uniform(low=-0.02, high=0.02, size=(6,))
         return self.state
 
     def render(self, mode='human'):
@@ -177,7 +177,7 @@ class doubleInvertedPendulum(gym.Env):
         robo_h = 0.5*robo_w
 
         # set scaling factor
-        w_world = 6 * x_limit + robo_w
+        w_world = 3 * x_limit + robo_w
         scale = w_window/w_world
 
         # width of arm in the window
