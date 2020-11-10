@@ -28,7 +28,7 @@ l1 = .5 * L1
 l2 = .5 * L2
 
 # Horizontal movement boundary
-x_limit = 1.5
+x_limit = 3
 
 # Lower arm degree limit
 alpha_limit = 45*np.pi/180.

@@ -27,7 +27,7 @@ def save_frames_as_gif(frames, episode, path='./gif/'):
 
     anim = animation.FuncAnimation(plt.gcf(), animate, frames=len(frames), interval=50)
     filename = 'Episode_%d.gif' % episode
-    anim.save(path + filename, writer='imagemagick', fps=24)
+    anim.save(path + filename)#, writer='imagemagick', fps=24)
     plt.close()
 
 
@@ -36,8 +36,8 @@ class Agent:
     agent.
     """
 
-    def __init__(self, env, layer_depth=256, layer_number=1, mem_size=100000, batch_size=128, target_update=20,
-                 epsilon=0.1, epsilon_decay=0.995, discount=0.99):
+    def __init__(self, env, layer_depth=24, layer_number=2, mem_size=100000, batch_size=64, target_update=20,
+                 epsilon=0.01, epsilon_decay=0.995, discount=0.99):
 
         """
         constructor for the general agent class
@@ -149,7 +149,7 @@ class Agent:
                 t += 1
                 self.remember(old_state, state, action, reward)
 
-                if t == 2000:
+                if t == 1000:
                     done = True
 
                 # QN batch training
