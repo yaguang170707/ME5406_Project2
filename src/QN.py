@@ -30,8 +30,8 @@ class QN():
     def predict(self, state):
         if len(state.shape) == 1:
             state = (np.expand_dims(state, 0))
-        Q_values = self.model.predict(state)
-        return Q_values
+        data = self.model(state)
+        return data.numpy()
 
     def set_weights(self, new_model):
         self.model.set_weights(new_model.model.get_weights())

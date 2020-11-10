@@ -36,7 +36,7 @@ class Agent:
     agent.
     """
 
-    def __init__(self, env, layer_depth=512, layer_number=1, mem_size=100000, batch_size=64, target_update=20,
+    def __init__(self, env, alpha = 1., layer_depth=512, layer_number=1, mem_size=100000, batch_size=64, target_update=20,
                  epsilon=0.01, epsilon_decay=0.995, discount=0.99):
 
         """
@@ -58,6 +58,7 @@ class Agent:
 
         self.batch_size = batch_size
         self.target_update = target_update
+        self.alpha = alpha
 
         self.epsilon = epsilon
         self.epsilon_decay = epsilon_decay
@@ -67,6 +68,7 @@ class Agent:
         self.mem_size = mem_size
         self.mem_count = 0
         self.replay_memory = np.zeros((mem_size, self.state_size * 2 + 2), dtype=np.float32)
+        self.priority = np.ones(mem_size, dtype=np.float32)  # priority for experience replay
 
         self.policy_network = QN(self.state_size, self.action_size, layer_depth, layer_number)
         self.target_network = QN(self.state_size, self.action_size, layer_depth, layer_number)
@@ -105,14 +107,27 @@ class Agent:
         self.mem_count += 1
 
     def batch_sample(self, batch_size):
+        # set sample pool
         pool_size = min(self.mem_size, self.mem_count)
         memory = self.replay_memory[:pool_size, :]
-        idx = np.random.choice(pool_size, batch_size, replace=False)
-        batch = memory[idx]
-        return batch
+        p = self.priority[:pool_size]
 
+        # calculate sampling probability
+        p = p**self.alpha
+        p = p/p.sum()
+
+        # prioritised sample
+        idx = np.random.choice(pool_size, batch_size, replace=False, p=p)
+        batch = memory[idx]
+        p = p[idx]
+
+        # return sample
+        return batch, idx, p
+
+    # train the agent
     def train(self, episodes=1000, save_every=20):
 
+        # record training history
         hist = []
 
         for episode in range(episodes):
@@ -164,6 +179,7 @@ class Agent:
 
             # intermediate savings
             if record:
+                # pass
                 _thread.start_new_thread(self.record, (episode, hist, frames))
 
     def record(self, episode, hist, frames):
@@ -172,7 +188,7 @@ class Agent:
         save_frames_as_gif(frames, episode)
 
     def batch_training(self, train_type="double DQN"):
-        batch = self.batch_sample(self.batch_size)
+        batch, batch_idx, p = self.batch_sample(self.batch_size)
 
         # unpack batch samples
         old_states = batch[:, :self.state_size]
@@ -205,14 +221,24 @@ class Agent:
         # clear target next Q values if it is terminal states
         Q_update[terminal_states] = 0
 
+        # update Q for training
         Q_values[index, actions] = rewards + self.discount * Q_update
 
         # exploit the symmetric property of the problem
         old_states = np.concatenate((old_states, -old_states), axis=0)
         Q_values = np.concatenate((Q_values, Q_values[:, ::-1]), axis=0)
+        p = np.concatenate((p/2, p/2), axis=0)
+
+        # sample weights
+        w = (1/(2*self.batch_size)*1/p)
+        w = (w/w.max())**(1 - 0.5**((self.mem_count-self.batch_size)/10))
 
         # train the policy network
-        self.policy_network.model.fit(old_states, Q_values, verbose=0)
+        self.policy_network.model.fit(old_states, Q_values, sample_weight=w, verbose=0)
+
+        # update priority
+        self.priority[batch_idx] = np.abs(self.policy_network.predict(old_states[:self.batch_size, :])
+                                          - Q_values[:self.batch_size])[index, actions] + 0.1
 
         if self.mem_count % self.target_update == 0:
             self.target_network.set_weights(self.policy_network)
