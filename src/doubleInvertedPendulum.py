@@ -92,7 +92,7 @@ class doubleInvertedPendulum(gym.Env):
                         dtype=np.float32)
 
         # action space and state space
-        self.action_space = spaces.Discrete(41)
+        self.action_space = spaces.Discrete(101)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # create seed for random initialisation
@@ -156,7 +156,7 @@ class doubleInvertedPendulum(gym.Env):
         if not done:
             reward = 1
         else:
-            reward = -100
+            reward = -1000
 
         return self.state, reward, done, {}
 

@@ -14,7 +14,7 @@ def constructNN(input_size, output_size, layer_depth, layer_number):
 
     model.add(layers.Dense(output_size))
 
-    model.compile(optimizer=keras.optimizers.Adam(lr=0.01),
+    model.compile(optimizer=keras.optimizers.Adam(),
                   loss="mean_squared_error",
                   metrics=['accuracy'])
 

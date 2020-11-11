@@ -6,7 +6,7 @@ from matplotlib import animation
 import matplotlib.pyplot as plt
 import _thread
 from tensorflow.keras.models import load_model
-
+from problem_parameters import *
 
 # deal with matplotlib thread warning by using use a non-interactive backend
 mpl.use('Agg')
@@ -19,14 +19,15 @@ def save_frames_as_gif(frames, episode, path='./gif/'):
     patch = plt.imshow(frames[0])
     plt.axis('off')
     plt.margins(0.)
-    plt.tight_layout(pad=0.,)
-    plt.annotate("Episode %d"%episode, (15, 40), fontsize=25)
+    plt.tight_layout(pad=0., )
+    plt.annotate("Episode %d" % episode, (15, 40), fontsize=25)
 
     def animate(i):
         patch.set_data(frames[i])
 
-    anim = animation.FuncAnimation(plt.gcf(), animate, frames=len(frames), interval=50)
-    filename = 'Episode_%d.gif' % episode
+    t = len(frames)
+    anim = animation.FuncAnimation(plt.gcf(), animate, frames=t, interval=50)
+    filename = 'Episode_%d_%d.gif' % (episode, t-1)
     anim.save(path + filename, fps=24)
     plt.close()
 
@@ -36,7 +37,7 @@ class Agent:
     agent.
     """
 
-    def __init__(self, env, alpha = 1., layer_depth=512, layer_number=1, mem_size=100000, batch_size=64, target_update=20,
+    def __init__(self, env, alpha=1., layer_depth=256, layer_number=1, mem_size=1000000, batch_size=128, target_update=100,
                  epsilon=0.01, epsilon_decay=0.995, discount=0.99):
 
         """
@@ -67,23 +68,47 @@ class Agent:
 
         self.mem_size = mem_size
         self.mem_count = 0
-        self.replay_memory = np.zeros((mem_size, self.state_size * 2 + 2), dtype=np.float32)
-        self.priority = np.ones(mem_size, dtype=np.float32)  # priority for experience replay
+        self.replay_memory = np.zeros((mem_size, self.state_size * 2 + 3), dtype=np.float32)
+        self.priority = np.ones(mem_size, dtype=np.float32) # priority for experience replay
 
         self.policy_network = QN(self.state_size, self.action_size, layer_depth, layer_number)
         self.target_network = QN(self.state_size, self.action_size, layer_depth, layer_number)
         self.target_network.set_weights(self.policy_network)
 
+    def action_boltzmann(self, state, episode):
+        """given a state, select a action based on boltzmann distribution"""
+        # get Q(s,a) and normalise
+        Q_values = self.policy_network.predict(state)[0]
+        Q_values = Q_values-Q_values.min()
+        Q_values = Q_values/Q_values.max()
+
+        # get best action
+        ch = Q_values.argmax()
+
+        # calculate boltzmann distribution
+        T = 1/(episode+0.001)
+        weights = np.exp(Q_values*episode**(1/6))
+
+        # normalise
+        weights = weights/weights.sum()
+
+        # choose action
+        action = np.random.choice(self.action_size, p=weights)
+
+        # check if the chosen one is the best
+        is_best = action == ch
+
+        # return the action and the boolean
+        return action, is_best
+
     def action_epsilon_greedy(self, state):
         """given a state, select a epsilon_greedy action"""
 
-        # state = (np.expand_dims(state, 0))
-        # Q_values = self.policy_network.predict(state)[0]
-
+        # get Q(s,a)
         Q_values = self.policy_network.predict(state)
 
+        # get best action
         ch = Q_values.argmax()
-        # print(Q_values, ch)
 
         # evenly distributed epsilon
         weights = np.ones(self.action_size) * self.epsilon / self.action_size
@@ -91,19 +116,27 @@ class Agent:
         # add the remaining weight on the greedy action
         weights[ch] += 1 - self.epsilon
 
-        # return the action
-        return np.random.choice(self.action_size, p=weights)
+        # choose action
+        action = np.random.choice(self.action_size, p=weights)
 
-    def remember(self, state, new_state, action, reward):
+        # check if the chosen one is the best
+        is_best = action == ch
+
+        # return the action and the boolean
+        return action, is_best
+
+    def remember(self, state, new_state, action, reward, done):
 
         if self.mem_count < self.mem_size:
             index = self.mem_count
 
         else:
-            index = self.mem_count % self.mem_size
+            # index = self.mem_count % self.mem_size
+            index = self.priority.argmin()
 
         # print(self.mem_count, index)
-        self.replay_memory[index, :] = *state, *new_state, action, reward
+        self.replay_memory[index, :] = *state, *new_state, action, reward, done
+        self.priority[index] = self.priority.max()
         self.mem_count += 1
 
     def batch_sample(self, batch_size):
@@ -111,10 +144,11 @@ class Agent:
         pool_size = min(self.mem_size, self.mem_count)
         memory = self.replay_memory[:pool_size, :]
         p = self.priority[:pool_size]
+        # print(p)
 
         # calculate sampling probability
-        p = p**self.alpha
-        p = p/p.sum()
+        p = p ** self.alpha
+        p = p / p.sum()
 
         # prioritised sample
         idx = np.random.choice(pool_size, batch_size, replace=False, p=p)
@@ -151,17 +185,20 @@ class Agent:
 
             while not done:
                 # choose epsilon greedy action
-                action = self.action_epsilon_greedy(state)
+                action, is_best = self.action_epsilon_greedy(state)
 
                 old_state = state
 
                 # march one step and receive feedback
                 state, reward, done, _ = self.env.step(action)
 
+                # if done:
+                #     print(self.policy_network.predict(state))
+
                 # update records and
                 score += reward
                 t += 1
-                self.remember(old_state, state, action, reward)
+                self.remember(old_state, state, action, reward, done)
 
                 if t == 1000:
                     done = True
@@ -171,11 +208,11 @@ class Agent:
                     frames.append(self.env.render(mode="rgb_array"))
 
                 # QN batch training
-                if self.mem_count > self.batch_size:
-                    self.batch_training(train_type="double DQN")
+                if self.mem_count >= self.batch_size:
+                    self.batch_training(episode, train_type="double DQN")
 
-            hist.append([episode, t, score, self.epsilon])
-            print("%d %d %d %4f" % (episode, t, score, self.epsilon))
+            hist.append([episode, t, score, self.epsilon, is_best])
+            print("%d %d %d %4f %r" % (episode, t, score, self.epsilon, is_best))
 
             # intermediate savings
             if record:
@@ -187,18 +224,20 @@ class Agent:
         np.savetxt("csv/hist.csv", hist, delimiter=",")
         save_frames_as_gif(frames, episode)
 
-    def batch_training(self, train_type="double DQN"):
+    def batch_training(self, episode, train_type="double DQN"):
         batch, batch_idx, p = self.batch_sample(self.batch_size)
 
         # unpack batch samples
         old_states = batch[:, :self.state_size]
         states = batch[:, self.state_size: 2 * self.state_size]
-        actions = batch[:, -2].astype(int)
-        rewards = batch[:, -1].astype(int)
+        actions = batch[:, -3].astype(int)
+        rewards = batch[:, -2].astype(int)
+        terminal_states = batch[:, -1].astype('bool')
+
+        # print(terminal_states)
 
         # define indices for later use
         index = np.arange(self.batch_size)
-        terminal_states = (rewards == -100)
 
         # predict Q(s, a) using Q nets
         Q_values = self.policy_network.predict(old_states)
@@ -227,18 +266,27 @@ class Agent:
         # exploit the symmetric property of the problem
         old_states = np.concatenate((old_states, -old_states), axis=0)
         Q_values = np.concatenate((Q_values, Q_values[:, ::-1]), axis=0)
-        p = np.concatenate((p/2, p/2), axis=0)
+        p = np.concatenate((p / 2, p / 2), axis=0)
 
         # sample weights
-        w = (1/(2*self.batch_size)*1/p)
-        w = (w/w.max())**(1 - 0.5**((self.mem_count-self.batch_size)/10))
+        beta = (1 - 1/(episode/100+2))
+        w = ((2 * self.batch_size) * p)**(-beta)
+        w = w/w.max()
+        # print(w)
 
         # train the policy network
         self.policy_network.model.fit(old_states, Q_values, sample_weight=w, verbose=0)
 
         # update priority
-        self.priority[batch_idx] = np.abs(self.policy_network.predict(old_states[:self.batch_size, :])
-                                          - Q_values[:self.batch_size])[index, actions] + 0.1
+        prediction = self.policy_network.predict(old_states[index])
+        delta = np.abs(prediction - Q_values[index])[index, actions]
+        self.priority[batch_idx] = delta + 0.1
+        _thread.start_new_thread(print, (prediction.max(), prediction.min(), delta.max(), delta.min(), delta.mean()))
+
+        # print(aa)
+        # print(prediction[index, actions])
+        # print(Q_values[index, actions])
+        # print(np.sort(batch_idx, axis=None))
 
         if self.mem_count % self.target_update == 0:
             self.target_network.set_weights(self.policy_network)
