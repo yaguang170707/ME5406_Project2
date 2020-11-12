@@ -4,8 +4,8 @@ from Agent_PER import Agent
 
 if __name__ == "__main__":
 
-    # env = doubleInvertedPendulum()
-    env = gym.make("CartPole-v0")
+    env = doubleInvertedPendulum()
+    # env = gym.make("CartPole-v0")
 
     agent = Agent(env)
     

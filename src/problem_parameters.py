@@ -27,14 +27,17 @@ l1 = .5 * L1
 # Gravity centre of upper arm
 l2 = .5 * L2
 
+I1 = m1*L1/12.
+I2 = m2*L2/12.
+
 # Horizontal movement boundary
 x_limit = 1.5*(L1+L2)
 
 # Lower arm degree limit
-alpha_limit = 90*np.pi/180.
+alpha_limit = 10*np.pi/180.
 
 # upper arm degree limit
-beta_limit = 90*np.pi/180.
+beta_limit = 10*np.pi/180.
 
 # Time step
 dt = 0.02

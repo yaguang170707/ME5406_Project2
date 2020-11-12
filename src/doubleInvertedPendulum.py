@@ -13,6 +13,16 @@ from gym.utils import seeding
 from problem_parameters import *
 
 
+# calculate the kinetic energy of the system
+def T(x, x_dot, alpha, alpha_dot, beta, beta_dot):
+    T0 = 0.5*M*x_dot**2
+    T1 = 0.5*m1*x_dot**2 + 0.5*(m1*l1**2 + I1)*alpha_dot**2 + m1*l1*alpha_dot*x_dot*np.cos(alpha)
+    T2 = 0.5*m2*x_dot**2 + 0.5*m2*(L1*alpha_dot)**2 + 0.5*(m2*l2**2 + I2)*beta_dot**2 \
+         + m2*L1*x_dot*alpha_dot*np.cos(alpha) + m2*l2*x_dot*beta_dot*np.cos(beta) \
+         + m2*L2*l2*alpha_dot*beta_dot*np.cos(alpha-beta)
+    return T0 +T1 +T2
+
+
 class doubleInvertedPendulum(gym.Env):
     """
     Description:
@@ -81,6 +91,8 @@ class doubleInvertedPendulum(gym.Env):
         self.b22 = -m2*L1*l2
         self.b31 = m2*l2*g
         self.b32 = m2*L1*l2
+
+        self.P = m1*g*l1 + m2*g*(L1+l2)
 
         # bounds of state space
         high = np.array([x_limit,
@@ -154,7 +166,7 @@ class doubleInvertedPendulum(gym.Env):
         done = abs(x)>x_limit or abs(alpha)>alpha_limit or abs(beta)>beta_limit
 
         if not done:
-            reward = 1
+            reward = 1 - T(x, x_dot, alpha, alpha_dot, beta, beta_dot)/self.P
         else:
             reward = -1000
 
@@ -162,7 +174,7 @@ class doubleInvertedPendulum(gym.Env):
 
     def reset(self):
         """Reset the simulation with small perturbations"""
-        self.state = self.np_random.uniform(low=-0.02, high=0.02, size=(6,))
+        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(6,))
         return self.state
 
     def render(self, mode='human'):

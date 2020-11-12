@@ -37,8 +37,8 @@ class Agent:
     agent.
     """
 
-    def __init__(self, env, alpha=1., layer_depth=256, layer_number=1, mem_size=1000000, batch_size=128, target_update=100,
-                 epsilon=0.01, epsilon_decay=0.995, discount=0.99):
+    def __init__(self, env, alpha=1., layer_depth=512, layer_number=1, mem_size=1000000, batch_size=64, target_update=50,
+                 epsilon=0.001, epsilon_decay=0.995, discount=0.99):
 
         """
         constructor for the general agent class
@@ -86,8 +86,9 @@ class Agent:
         ch = Q_values.argmax()
 
         # calculate boltzmann distribution
-        T = 1/(episode+0.001)
-        weights = np.exp(Q_values*episode**(1/6))
+        T = 1/(episode/10000 + 0.001) + 1
+        self.epsilon = T
+        weights = np.exp(Q_values/T)
 
         # normalise
         weights = weights/weights.sum()
@@ -139,7 +140,7 @@ class Agent:
         self.priority[index] = self.priority.max()
         self.mem_count += 1
 
-    def batch_sample(self, batch_size):
+    def batch_sample_PER(self, batch_size):
         # set sample pool
         pool_size = min(self.mem_size, self.mem_count)
         memory = self.replay_memory[:pool_size, :]
@@ -157,6 +158,18 @@ class Agent:
 
         # return sample
         return batch, idx, p
+
+    def batch_sample(self, batch_size):
+        # set sample pool
+        pool_size = min(self.mem_size, self.mem_count)
+        memory = self.replay_memory[:pool_size, :]
+
+        # sample
+        idx = np.random.choice(pool_size, batch_size, replace=False)
+        batch = memory[idx]
+
+        # return sample
+        return batch
 
     # train the agent
     def train(self, episodes=1000, save_every=20):
@@ -186,6 +199,8 @@ class Agent:
             while not done:
                 # choose epsilon greedy action
                 action, is_best = self.action_epsilon_greedy(state)
+                # action, is_best = self.action_boltzmann(state, episode)
+                _thread.start_new_thread(print, (action, is_best))
 
                 old_state = state
 
@@ -225,7 +240,8 @@ class Agent:
         save_frames_as_gif(frames, episode)
 
     def batch_training(self, episode, train_type="double DQN"):
-        batch, batch_idx, p = self.batch_sample(self.batch_size)
+        # batch, batch_idx, p = self.batch_sample_PER(self.batch_size)
+        batch = self.batch_sample(self.batch_size)
 
         # unpack batch samples
         old_states = batch[:, :self.state_size]
@@ -266,27 +282,21 @@ class Agent:
         # exploit the symmetric property of the problem
         old_states = np.concatenate((old_states, -old_states), axis=0)
         Q_values = np.concatenate((Q_values, Q_values[:, ::-1]), axis=0)
-        p = np.concatenate((p / 2, p / 2), axis=0)
+        # p = np.concatenate((p / 2, p / 2), axis=0)
 
         # sample weights
-        beta = (1 - 1/(episode/100+2))
-        w = ((2 * self.batch_size) * p)**(-beta)
-        w = w/w.max()
-        # print(w)
+        # beta = (1 - 1/(episode/100+2))
+        # w = ((2 * self.batch_size) * p)**(-beta)
+        # w = w/w.max()
 
         # train the policy network
-        self.policy_network.model.fit(old_states, Q_values, sample_weight=w, verbose=0)
+        self.policy_network.model.fit(old_states, Q_values, verbose=0)#sample_weight=w,
 
         # update priority
-        prediction = self.policy_network.predict(old_states[index])
-        delta = np.abs(prediction - Q_values[index])[index, actions]
-        self.priority[batch_idx] = delta + 0.1
-        _thread.start_new_thread(print, (prediction.max(), prediction.min(), delta.max(), delta.min(), delta.mean()))
-
-        # print(aa)
-        # print(prediction[index, actions])
-        # print(Q_values[index, actions])
-        # print(np.sort(batch_idx, axis=None))
+        # prediction = self.policy_network.predict(old_states[index])
+        # delta = np.abs(prediction - Q_values[index])[index, actions]
+        # self.priority[batch_idx] = delta + 0.1
+        # _thread.start_new_thread(print, (prediction.max(), prediction.min(), delta.max(), delta.min(), delta.mean()))
 
         if self.mem_count % self.target_update == 0:
             self.target_network.set_weights(self.policy_network)
