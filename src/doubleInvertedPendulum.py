@@ -8,19 +8,10 @@ import gym
 from gym import spaces
 import numpy as np
 from gym.utils import seeding
+from gym.envs.classic_control import rendering
 
 # import problem parameters
 from problem_parameters import *
-
-
-# calculate the kinetic energy of the system
-def T(x, x_dot, alpha, alpha_dot, beta, beta_dot):
-    T0 = 0.5*M*x_dot**2
-    T1 = 0.5*m1*x_dot**2 + 0.5*(m1*l1**2 + I1)*alpha_dot**2 + m1*l1*alpha_dot*x_dot*np.cos(alpha)
-    T2 = 0.5*m2*x_dot**2 + 0.5*m2*(L1*alpha_dot)**2 + 0.5*(m2*l2**2 + I2)*beta_dot**2 \
-         + m2*L1*x_dot*alpha_dot*np.cos(alpha) + m2*l2*x_dot*beta_dot*np.cos(beta) \
-         + m2*L2*l2*alpha_dot*beta_dot*np.cos(alpha-beta)
-    return T0 +T1 +T2
 
 
 class doubleInvertedPendulum(gym.Env):
@@ -92,7 +83,8 @@ class doubleInvertedPendulum(gym.Env):
         self.b31 = m2*l2*g
         self.b32 = m2*L1*l2
 
-        self.P = m1*g*l1 + m2*g*(L1+l2)
+        # maximum potential energy of the system
+        self.P_max = m1*g*l1 + m2*g*(L1+l2)
 
         # bounds of state space
         high = np.array([x_limit,
@@ -112,12 +104,35 @@ class doubleInvertedPendulum(gym.Env):
 
         # initialise viewer and state
         self.viewer = None
+        self.robot = None
+        self.robot_ghost_l = None
+        self.robot_ghost_r = None
+        self.track = None
         self.state = None
 
     # create seed for random initialisation
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
+
+    # calculate the kinetic energy of the system
+    def T(self):
+        x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
+        # if ignore_x_limit:
+        #     x_dot = 0.
+        T0 = 0.5 * M * x_dot ** 2
+        T1 = 0.5 * m1 * x_dot ** 2 + 0.5 * (m1 * l1 ** 2 + I1) * alpha_dot ** 2 + m1 * l1 * alpha_dot * x_dot * np.cos(
+            alpha)
+        T2 = 0.5 * m2 * x_dot ** 2 + 0.5 * m2 * (L1 * alpha_dot) ** 2 + 0.5 * (m2 * l2 ** 2 + I2) * beta_dot ** 2 \
+             + m2 * L1 * x_dot * alpha_dot * np.cos(alpha) + m2 * l2 * x_dot * beta_dot * np.cos(beta) \
+             + m2 * L2 * l2 * alpha_dot * beta_dot * np.cos(alpha - beta)
+        return T0 + T1 + T2
+
+    def P(self):
+        x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
+        P1 = m1*g*l1*np.cos(alpha)
+        P2 = m2*g*(L1*np.cos(alpha) + l2*np.cos(beta))
+        return P1+P2
 
     # simulate one step based on given action
     def step(self, action):
@@ -161,16 +176,17 @@ class doubleInvertedPendulum(gym.Env):
             alpha = (alpha + alpha_dot*dt)#%(2*np.pi)
             beta = (beta + beta_dot*dt)#%(2*np.pi)
 
+        reward = np.exp( 1 - self.P()/self.P_max - self.T()/self.P_max)
         self.state = np.array([x, x_dot, alpha, alpha_dot, beta, beta_dot])
+        observations = self.state.copy()
+        done = abs(alpha) > alpha_limit or abs(beta) > beta_limit or abs(x) > x_limit
 
-        done = abs(x)>x_limit or abs(alpha)>alpha_limit or abs(beta)>beta_limit
+        # enable boundary ignore
+        if ignore_x_limit:
+            observations[0] = 0.
+            done = abs(alpha)>alpha_limit or abs(beta)>beta_limit
 
-        if not done:
-            reward = 1 - T(x, x_dot, alpha, alpha_dot, beta, beta_dot)/self.P
-        else:
-            reward = -1000
-
-        return self.state, reward, done, {}
+        return observations, reward, done, {}
 
     def reset(self):
         """Reset the simulation with small perturbations"""
@@ -189,7 +205,7 @@ class doubleInvertedPendulum(gym.Env):
         robo_h = 0.5*robo_w
 
         # set scaling factor
-        w_world = 2 * x_limit + robo_w
+        w_world = 2 * x_limit
         scale = w_window/w_world
 
         # width of arm in the window
@@ -218,96 +234,47 @@ class doubleInvertedPendulum(gym.Env):
 
         # Initialise a Viewer object if not exist
         if self.viewer is None:
-            from gym.envs.classic_control import rendering
 
             # create viewer with pre-defined window sizes
             self.viewer = rendering.Viewer(w_window, h_window)
 
-            # set sides values of the robot
-            l, r, t, b = -w_robo/2, w_robo/2, h_robo/2, -h_robo/2
-            # create a graphical robot
-            self.robo = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
-            # create transform attribute and add it to the robot
-            self.robo_trans = rendering.Transform()
-            self.robo.add_attr(self.robo_trans)
-            # add robo in viewer
-            self.viewer.add_geom(self.robo)
+            # create robot object and ghost robots for periodic display
+            self.robot = robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
+            self.robot.add_to(self)
 
-            # create a left wheel and add it in viewer
-            self.wheel_l = rendering.make_circle(d_wheel/2)
-            self.wheel_l_trans = rendering.Transform(translation=(-w_robo/4, -h_robo/2))
-            self.wheel_l.add_attr(self.wheel_l_trans)
-            self.wheel_l.add_attr(self.robo_trans)
-            self.wheel_l.set_color(.5, .5, .5)
-            self.viewer.add_geom(self.wheel_l)
+            # plot ghost robots only if x_limit is ignored
+            if ignore_x_limit:
+                self.robot_ghost_l = robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
+                self.robot_ghost_l.add_to(self)
 
-            # create a right wheel and add it in viewer
-            self.wheel_r = rendering.make_circle(d_wheel/2)
-            self.wheel_r_trans = rendering.Transform(translation=(w_robo/4, -h_robo/2))
-            self.wheel_r.add_attr(self.wheel_r_trans)
-            self.wheel_r.add_attr(self.robo_trans)
-            self.wheel_r.set_color(.5, .5, .5)
-            self.viewer.add_geom(self.wheel_r)
+                self.robot_ghost_r = robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
+                self.robot_ghost_r.add_to(self)
 
             # create the track
             self.track = rendering.Line((0, track_y), (w_window, track_y))
             self.track.set_color(0, 0, 0)
             self.viewer.add_geom(self.track)
 
-            # set sides values of the lower arm
-            l, r, t, b = -w_arm/2, w_arm/2, s_L1, 0
-
-            # create a graphical lower arm
-            self.arm_l = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
-            self.arm_l.set_color(.8, .6, .4)
-
-            # create transform attribute and add it to the lower arm
-            self.arm_l_trans = rendering.Transform()
-            self.arm_l.add_attr(self.arm_l_trans)
-            self.arm_l.add_attr(self.robo_trans)
-
-            # add lower arm in viewer
-            self.viewer.add_geom(self.arm_l)
-
-            # set corner values of the upper arm
-            l, r, t, b = -w_arm/2, w_arm/2, s_L2, 0
-
-            # create a graphical upper arm
-            self.arm_u = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
-            self.arm_u.set_color(.8, .6, .4)
-
-            # create transform attribute and add it to the upper arm
-            self.arm_u_trans = rendering.Transform(translation=(0, s_L1))
-            self.arm_u.add_attr(self.arm_u_trans)
-            self.arm_u.add_attr(self.arm_l_trans)
-            self.arm_u.add_attr(self.robo_trans)
-
-            # add upper arm in viewer
-            self.viewer.add_geom(self.arm_u)
-
-            # create a lower joint and add it in viewer
-            self.joint_l = rendering.make_circle(w_arm/2)
-            self.joint_l.add_attr(self.arm_l_trans)
-            self.joint_l.add_attr(self.robo_trans)
-            self.joint_l.set_color(.5, .5, .5)
-            self.viewer.add_geom(self.joint_l)
-
-            # create a upper joint and add it in viewer
-            self.joint_u = rendering.make_circle(w_arm/2)
-            self.joint_u.add_attr(self.arm_u_trans)
-            self.joint_u.add_attr(self.arm_l_trans)
-            self.joint_u.add_attr(self.robo_trans)
-            self.joint_u.set_color(.5, .5, .5)
-            self.viewer.add_geom(self.joint_u)
-
         if self.state is None:
             return None
 
         x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
+        if ignore_x_limit:
+            x = np.mod((x + x_limit), 2 * x_limit) - x_limit
         robo_x = x*scale + w_window / 2.0
-        self.robo_trans.set_translation(robo_x, robo_y)
-        self.arm_l_trans.set_rotation(alpha)
-        self.arm_u_trans.set_rotation((beta-alpha))
+        self.robot.cart_trans.set_translation(robo_x, robo_y)
+        self.robot.arm_l_trans.set_rotation(alpha)
+        self.robot.arm_u_trans.set_rotation((beta-alpha))
+
+        # plot ghost robots only if x_limit is ignored
+        if ignore_x_limit:
+            self.robot_ghost_l.cart_trans.set_translation(robo_x-w_window, robo_y)
+            self.robot_ghost_l.arm_l_trans.set_rotation(alpha)
+            self.robot_ghost_l.arm_u_trans.set_rotation((beta-alpha))
+
+            self.robot_ghost_r.cart_trans.set_translation(robo_x+w_window, robo_y)
+            self.robot_ghost_r.arm_l_trans.set_rotation(alpha)
+            self.robot_ghost_r.arm_u_trans.set_rotation((beta-alpha))
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
@@ -316,6 +283,91 @@ class doubleInvertedPendulum(gym.Env):
             self.viewer.close()
             self.viewer = None
 
+# define a class that handles the creation of graphical objects for visualisation
+class robot():
+    def __init__(self, w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2):
+        self.cart, self.cart_trans = self.create_cart(w_robo, h_robo)
+        self.wheel_l, self.wheel_l_trans = self.create_wheel(w_robo, h_robo, d_wheel, -1)
+        self.wheel_r, self.wheel_r_trans = self.create_wheel(w_robo, h_robo, d_wheel, 1)
+        self.arm_l, self.arm_l_trans = self.create_arm_l(w_arm, s_L1)
+        self.arm_u, self.arm_u_trans = self.create_arm_u(w_arm, s_L1, s_L2)
+        self.joint_l = self.create_joint_l(w_arm)
+        self.joint_u = self.create_joint_u(w_arm)
+
+    def create_cart(self, w_robo, h_robo):
+        # set sides values of the robot
+        l, r, t, b = -w_robo / 2, w_robo / 2, h_robo / 2, -h_robo / 2
+        # create a graphical robot
+        cart = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+        # create transform attribute and add it to the robot
+        cart_trans = rendering.Transform()
+        cart.add_attr(cart_trans)
+        return cart, cart_trans
+
+    def create_wheel(self, w_robo, h_robo, d_wheel, offset):
+        wheel = rendering.make_circle(d_wheel / 2)
+        wheel_trans = rendering.Transform(translation=(offset*w_robo / 4, -h_robo / 2))
+        wheel.add_attr(wheel_trans)
+        wheel.add_attr(self.cart_trans)
+        wheel.set_color(.5, .5, .5)
+        return wheel, wheel_trans
+
+    def create_arm_l(self, w_arm, s_L1):
+        # set sides values of the lower arm
+        l, r, t, b = -w_arm / 2, w_arm / 2, s_L1, 0
+
+        # create a graphical lower arm
+        arm_l = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+        arm_l.set_color(.8, .6, .4)
+
+        # create transform attribute and add it to the lower arm
+        arm_l_trans = rendering.Transform()
+        arm_l.add_attr(arm_l_trans)
+        arm_l.add_attr(self.cart_trans)
+
+        return arm_l, arm_l_trans
+
+    def create_arm_u(self, w_arm, s_L1, s_L2):
+        # set corner values of the upper arm
+        l, r, t, b = -w_arm / 2, w_arm / 2, s_L2, 0
+
+        # create a graphical upper arm
+        arm_u = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
+        arm_u.set_color(.8, .6, .4)
+
+        # create transform attribute and add it to the upper arm
+        arm_u_trans = rendering.Transform(translation=(0, s_L1))
+        arm_u.add_attr(arm_u_trans)
+        arm_u.add_attr(self.arm_l_trans)
+        arm_u.add_attr(self.cart_trans)
+
+        return arm_u, arm_u_trans
+
+    def create_joint_l(self, w_arm):
+        # create a lower joint and add it in viewer
+        joint_l = rendering.make_circle(w_arm / 2)
+        joint_l.add_attr(self.arm_l_trans)
+        joint_l.add_attr(self.cart_trans)
+        joint_l.set_color(.5, .5, .5)
+        return joint_l
+
+    def create_joint_u(self, w_arm):
+        # create a upper joint and add it in viewer
+        joint_u = rendering.make_circle(w_arm / 2)
+        joint_u.add_attr(self.arm_u_trans)
+        joint_u.add_attr(self.arm_l_trans)
+        joint_u.add_attr(self.cart_trans)
+        joint_u.set_color(.5, .5, .5)
+        return joint_u
+
+    def add_to(self, env):
+        env.viewer.add_geom(self.cart)
+        env.viewer.add_geom(self.wheel_l)
+        env.viewer.add_geom(self.wheel_r)
+        env.viewer.add_geom(self.arm_l)
+        env.viewer.add_geom(self.arm_u)
+        env.viewer.add_geom(self.joint_l)
+        env.viewer.add_geom(self.joint_u)
 
 
 

@@ -2,30 +2,33 @@ import tensorflow as tf
 import numpy as np
 from tensorflow import keras
 from tensorflow.keras import layers
-import copy
+import datetime
 
 
 def constructNN(input_size, output_size, layer_depth, layer_number):
     model = keras.Sequential()
 
-    model.add(layers.Dense(layer_depth, input_shape=(input_size, ), activation='relu'))
-    for i in range(layer_number):
+    model.add(layers.Dense(input_size, input_shape=(input_size, ), activation='relu'))
+    for _ in range(layer_number):
         model.add(layers.Dense(layer_depth, activation='relu'))
 
-    model.add(layers.Dense(output_size))
+    model.add(layers.Dense(output_size, activation='relu'))
 
     model.compile(optimizer=keras.optimizers.Adam(),
                   loss="mean_squared_error",
                   metrics=['accuracy'])
 
+    log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
     # print(model.summary())
 
-    return model
+    return model, tensorboard_callback
 
 
 class QN():
     def __init__(self, input_size, output_size, layer_depth, layer_number):
-        self.model = constructNN(input_size, output_size, layer_depth, layer_number)
+        self.model, self.tensorboard_callback = constructNN(input_size, output_size, layer_depth, layer_number)
 
     def predict(self, state):
         if len(state.shape) == 1:

@@ -37,8 +37,8 @@ class Agent:
     agent.
     """
 
-    def __init__(self, env, alpha=1., layer_depth=512, layer_number=1, mem_size=1000000, batch_size=64, target_update=50,
-                 epsilon=0.001, epsilon_decay=0.995, discount=0.99):
+    def __init__(self, env, alpha=1., layer_depth=50, layer_number=1, mem_size=1000000, batch_size=128, target_update=500,
+                 epsilon=0.001, epsilon_decay=0.99, discount=0.99):
 
         """
         constructor for the general agent class
@@ -200,7 +200,7 @@ class Agent:
                 # choose epsilon greedy action
                 action, is_best = self.action_epsilon_greedy(state)
                 # action, is_best = self.action_boltzmann(state, episode)
-                _thread.start_new_thread(print, (action, is_best))
+                # _thread.start_new_thread(print, (action, is_best))
 
                 old_state = state
 
@@ -214,6 +214,7 @@ class Agent:
                 score += reward
                 t += 1
                 self.remember(old_state, state, action, reward, done)
+                self.remember(-old_state, -state, np.abs(self.action_size-action-1), reward, done)
 
                 if t == 1000:
                     done = True
@@ -275,13 +276,21 @@ class Agent:
 
         # clear target next Q values if it is terminal states
         Q_update[terminal_states] = 0
+        # print(index)
+
+        def sum(x, n):
+            a = np.ones(n) + x
+            b = np.arange(n)
+            y = np.power(a, b)
+            return y.sum()
 
         # update Q for training
         Q_values[index, actions] = rewards + self.discount * Q_update
+        Q_values = Q_values.clip(0, sum(self.discount, 1000))
 
         # exploit the symmetric property of the problem
-        old_states = np.concatenate((old_states, -old_states), axis=0)
-        Q_values = np.concatenate((Q_values, Q_values[:, ::-1]), axis=0)
+        # old_states = np.concatenate((old_states, -old_states), axis=0)
+        # Q_values = np.concatenate((Q_values, Q_values[:, ::-1]), axis=0)
         # p = np.concatenate((p / 2, p / 2), axis=0)
 
         # sample weights
@@ -290,15 +299,17 @@ class Agent:
         # w = w/w.max()
 
         # train the policy network
-        self.policy_network.model.fit(old_states, Q_values, verbose=0)#sample_weight=w,
+        self.policy_network.model.fit(old_states, Q_values, verbose=1)
+                                      # callbacks=[self.policy_network.tensorboard_callback])#sample_weight=w,
 
         # update priority
-        # prediction = self.policy_network.predict(old_states[index])
+        prediction = self.policy_network.predict(old_states)
         # delta = np.abs(prediction - Q_values[index])[index, actions]
         # self.priority[batch_idx] = delta + 0.1
-        # _thread.start_new_thread(print, (prediction.max(), prediction.min(), delta.max(), delta.min(), delta.mean()))
+        _thread.start_new_thread(print, (prediction.max(), prediction.min()))#, delta.max(), delta.min(), delta.mean()))
 
         if self.mem_count % self.target_update == 0:
+            print('update')
             self.target_network.set_weights(self.policy_network)
 
     def load_model(self, model):
