@@ -32,7 +32,7 @@ I2 = m2*L2/12.
 
 # Horizontal movement boundary
 x_limit = 1.5*(L1+L2)
-ignore_x_limit = True#False # if true, the x_limit values is only used for visualisation purposes
+ignore_x_limit = False#False # if true, the x_limit values is only used for visualisation purposes
 
 # Lower arm degree limit
 alpha_limit = 60*np.pi/180.

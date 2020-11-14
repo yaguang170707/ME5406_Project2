@@ -176,7 +176,7 @@ class doubleInvertedPendulum(gym.Env):
             alpha = (alpha + alpha_dot*dt)#%(2*np.pi)
             beta = (beta + beta_dot*dt)#%(2*np.pi)
 
-        reward = np.exp( 1 - self.P()/self.P_max - self.T()/self.P_max)
+        reward = np.exp( self.P()/self.P_max - self.T()/self.P_max - 1)
         self.state = np.array([x, x_dot, alpha, alpha_dot, beta, beta_dot])
         observations = self.state.copy()
         done = abs(alpha) > alpha_limit or abs(beta) > beta_limit or abs(x) > x_limit
@@ -185,6 +185,9 @@ class doubleInvertedPendulum(gym.Env):
         if ignore_x_limit:
             observations[0] = 0.
             done = abs(alpha)>alpha_limit or abs(beta)>beta_limit
+
+        if done:
+            reward = -100
 
         return observations, reward, done, {}
 
