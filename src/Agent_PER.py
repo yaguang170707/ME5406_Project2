@@ -308,7 +308,7 @@ class Agent:
                 if t == self.max_episode and not done:
                     done = True
                     self.fail_percent = 0.5
-                    self.target_update = int(min(self.target_update*2, 50000))
+                    self.target_update = int(min(self.target_update+500, 50000))
                 # else:
                 #     self.fail_percent = 0.05
 

@@ -37,14 +37,11 @@ class doubleInvertedPendulum(gym.Env):
         problem_parameters.py file.
 
     Action:
-        Type: Discrete(3)
-        Num     Action
-        0       Applying a left-pointing force
-        1       Do nothing
-        2       Applying a right-pointing force
+        Type: Discrete(N_a)
 
     Reward:
-        If the two arms are kept upright (within the thresholds), then a reward of 1 will be given
+        A reward will be given for each step. The amount of the reward can be selected by comment/uncomment the desired
+        one.
 
     Starting State:
         All observations are initialised with a perturbation within [-0.05..0.05]
@@ -52,14 +49,10 @@ class doubleInvertedPendulum(gym.Env):
     Episode Termination:
         Robot reaches horizontal thresholds;
         The amplitude of the upper arm angle reaches beta_limit;
-        Robot survives through 500 steps.
-        Solved Requirements:
-        Considered solved when the average return is greater than or equal to
-        490.0 over 100 consecutive trials.
+        The amplitude of the lower arm angle reaches alpha_limit;
     """
 
     def __init__(self):
-
         # define coefficients of the dynamics equations as in (Yi, Yubazaki and Hirota 2001)
 
         # linear coefficients
@@ -96,7 +89,7 @@ class doubleInvertedPendulum(gym.Env):
                         dtype=np.float32)
 
         # action space and state space
-        self.action_space = spaces.Discrete(11)
+        self.action_space = spaces.Discrete(N_a)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # create seed for random initialisation
@@ -114,6 +107,11 @@ class doubleInvertedPendulum(gym.Env):
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
+
+    def reset(self):
+        """Reset the simulation with small perturbations"""
+        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(6,))
+        return self.state
 
     # calculate the kinetic energy of the system
     def T(self):
@@ -140,7 +138,9 @@ class doubleInvertedPendulum(gym.Env):
         x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
 
         # calculate force
-        F = (action-int(self.action_space.n/2))*force
+        # F = (action-int(self.action_space.n/2))*force
+        F = 2*force/(self.action_space.n-1) * action - force
+        # print(action, F)
 
         # update equation coefficients
         a12 = self.a12_without_cos_a * np.cos(alpha)
@@ -176,7 +176,7 @@ class doubleInvertedPendulum(gym.Env):
             alpha = (alpha + alpha_dot*dt)#%(2*np.pi)
             beta = (beta + beta_dot*dt)#%(2*np.pi)
 
-        reward = np.exp(self.P()/self.P_max - self.T()/self.P_max - 1)
+        reward = 1#np.exp(self.P()/self.P_max - self.T()/self.P_max - 1)
         # reward = self.P() / self.P_max
         # print(reward)
         self.state = np.array([x, x_dot, alpha, alpha_dot, beta, beta_dot])
@@ -192,11 +192,6 @@ class doubleInvertedPendulum(gym.Env):
             reward = -100
 
         return observations, reward, done, {}
-
-    def reset(self):
-        """Reset the simulation with small perturbations"""
-        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(6,))
-        return self.state
 
     def render(self, mode='human'):
         """ visualise the system"""
@@ -299,6 +294,7 @@ class robot():
         self.joint_l = self.create_joint_l(w_arm)
         self.joint_u = self.create_joint_u(w_arm)
 
+    # create the cart
     def create_cart(self, w_robo, h_robo):
         # set sides values of the robot
         l, r, t, b = -w_robo / 2, w_robo / 2, h_robo / 2, -h_robo / 2
@@ -309,6 +305,7 @@ class robot():
         cart.add_attr(cart_trans)
         return cart, cart_trans
 
+    # create wheels of the cart
     def create_wheel(self, w_robo, h_robo, d_wheel, offset):
         wheel = rendering.make_circle(d_wheel / 2)
         wheel_trans = rendering.Transform(translation=(offset*w_robo / 4, -h_robo / 2))
@@ -317,6 +314,7 @@ class robot():
         wheel.set_color(.5, .5, .5)
         return wheel, wheel_trans
 
+    # create lower arm
     def create_arm_l(self, w_arm, s_L1):
         # set sides values of the lower arm
         l, r, t, b = -w_arm / 2, w_arm / 2, s_L1, 0
@@ -332,6 +330,7 @@ class robot():
 
         return arm_l, arm_l_trans
 
+    # create upper arm
     def create_arm_u(self, w_arm, s_L1, s_L2):
         # set corner values of the upper arm
         l, r, t, b = -w_arm / 2, w_arm / 2, s_L2, 0
@@ -348,6 +347,7 @@ class robot():
 
         return arm_u, arm_u_trans
 
+    # create joints
     def create_joint_l(self, w_arm):
         # create a lower joint and add it in viewer
         joint_l = rendering.make_circle(w_arm / 2)
@@ -365,6 +365,7 @@ class robot():
         joint_u.set_color(.5, .5, .5)
         return joint_u
 
+    # add the objects to viewer of the environment
     def add_to(self, env):
         env.viewer.add_geom(self.cart)
         env.viewer.add_geom(self.wheel_l)

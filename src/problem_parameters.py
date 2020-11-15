@@ -1,7 +1,10 @@
 import numpy as np
 
+# number of force levels
+N_a = 2
+
 # Amplitude of applied force
-force = 20.
+force = 100.
 
 # Gravitational acceleration
 g = 9.8
