@@ -96,7 +96,7 @@ class doubleInvertedPendulum(gym.Env):
                         dtype=np.float32)
 
         # action space and state space
-        self.action_space = spaces.Discrete(101)
+        self.action_space = spaces.Discrete(11)
         self.observation_space = spaces.Box(-high, high, dtype=np.float32)
 
         # create seed for random initialisation
@@ -176,7 +176,9 @@ class doubleInvertedPendulum(gym.Env):
             alpha = (alpha + alpha_dot*dt)#%(2*np.pi)
             beta = (beta + beta_dot*dt)#%(2*np.pi)
 
-        reward = np.exp( self.P()/self.P_max - self.T()/self.P_max - 1)
+        reward = np.exp(self.P()/self.P_max - self.T()/self.P_max - 1)
+        # reward = self.P() / self.P_max
+        # print(reward)
         self.state = np.array([x, x_dot, alpha, alpha_dot, beta, beta_dot])
         observations = self.state.copy()
         done = abs(alpha) > alpha_limit or abs(beta) > beta_limit or abs(x) > x_limit

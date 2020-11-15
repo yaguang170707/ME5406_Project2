@@ -15,7 +15,7 @@ def constructNN(input_size, output_size, layer_depth, layer_number):
     def custom_activation(x):
         return tf.keras.activations.relu(x)-100
 
-    model.add(layers.Dense(output_size, activation=custom_activation))
+    model.add(layers.Dense(output_size))#, activation=custom_activation)) #
 
     model.compile(optimizer=keras.optimizers.Adam(),
                   loss="mean_squared_error",

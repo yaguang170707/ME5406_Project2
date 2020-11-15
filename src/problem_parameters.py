@@ -1,7 +1,7 @@
 import numpy as np
 
 # Amplitude of applied force
-force = 2.
+force = 20.
 
 # Gravitational acceleration
 g = 9.8
@@ -35,10 +35,10 @@ x_limit = 1.5*(L1+L2)
 ignore_x_limit = False#False # if true, the x_limit values is only used for visualisation purposes
 
 # Lower arm degree limit
-alpha_limit = 60*np.pi/180.
+alpha_limit = 20*np.pi/180.
 
 # upper arm degree limit
-beta_limit = 12*np.pi/180.
+beta_limit = 15*np.pi/180.
 
 # Time step
 dt = 0.02
