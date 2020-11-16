@@ -116,8 +116,6 @@ class DoubleInvertedPendulum(gym.Env):
     # calculate the kinetic energy of the system
     def T(self):
         x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
-        # if ignore_x_limit:
-        #     x_dot = 0.
         T0 = 0.5 * M * x_dot ** 2
         T1 = 0.5 * m1 * x_dot ** 2 + 0.5 * (m1 * l1 ** 2 + I1) * alpha_dot ** 2 + m1 * l1 * alpha_dot * x_dot * np.cos(
             alpha)
@@ -138,9 +136,7 @@ class DoubleInvertedPendulum(gym.Env):
         x, x_dot, alpha, alpha_dot, beta, beta_dot = self.state
 
         # calculate force
-        # F = (action-int(self.action_space.n/2))*force
-        F = 2*force/(self.action_space.n-1) * action - force
-        # print(action, F)
+        F = 2*F_max/(self.action_space.n-1) * action - F_max
 
         # update equation coefficients
         a12 = self.a12_without_cos_a * np.cos(alpha)
@@ -162,8 +158,8 @@ class DoubleInvertedPendulum(gym.Env):
         # update state variables using specified time marching method
         if marching_method == 'euler':
             x = x + x_dot*dt
-            alpha = (alpha + alpha_dot*dt)#%(2*np.pi)
-            beta = (beta+beta_dot*dt)#%(2*np.pi)
+            alpha = (alpha + alpha_dot*dt)
+            beta = (beta+beta_dot*dt)
             x_dot += x_2dot*dt
             alpha_dot += alpha_2dot*dt
             beta_dot += beta_2dot*dt
@@ -173,12 +169,15 @@ class DoubleInvertedPendulum(gym.Env):
             alpha_dot += alpha_2dot*dt
             beta_dot += beta_2dot*dt
             x = x + x_dot*dt
-            alpha = (alpha + alpha_dot*dt)#%(2*np.pi)
-            beta = (beta + beta_dot*dt)#%(2*np.pi)
+            alpha = (alpha + alpha_dot*dt)
+            beta = (beta + beta_dot*dt)
 
-        reward = 1#np.exp(self.P()/self.P_max - self.T()/self.P_max - 1)
+        # reward schemes, select one you like
+        reward = 1
         # reward = self.P() / self.P_max
-        # print(reward)
+        # reward = (self.P() - self.T()) / self.P_max
+        # reward = np.exp((self.P() - self.T()) / self.P_max - 1)
+
         self.state = np.array([x, x_dot, alpha, alpha_dot, beta, beta_dot])
         observations = self.state.copy()
         done = abs(alpha) > alpha_limit or abs(beta) > beta_limit or abs(x) > x_limit
@@ -187,9 +186,6 @@ class DoubleInvertedPendulum(gym.Env):
         if ignore_x_limit:
             observations[0] = 0.
             done = abs(alpha)>alpha_limit or abs(beta)>beta_limit
-
-        # if done:
-        #     reward = -100
 
         return observations, reward, done, {}
 
@@ -278,6 +274,7 @@ class DoubleInvertedPendulum(gym.Env):
 
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
 
+    # close the environment
     def close(self):
         if self.viewer:
             self.viewer.close()

@@ -7,14 +7,17 @@ import matplotlib.pyplot as plt
 import _thread
 from tensorflow.keras.models import load_model
 from problem_parameters import *
+from agent_parameters import *
 
 # deal with matplotlib thread warning by using use a non-interactive backend
 mpl.use('Agg')
 
 
-# a helper function to store env.render() to gif, code downloaded from and modified base on
-# https://gist.github.com/botforge/64cbb71780e6208172bbf03cd9293553
-def save_frames_as_gif(frames, episode, path='./gif/'):
+def save_frames_as_gif(frames, episode, path):
+    """
+    a helper function to store env.render() to gif, code downloaded from and modified base on
+    https://gist.github.com/botforge/64cbb71780e6208172bbf03cd9293553
+    """
     _ = plt.figure(figsize=(6, 5), dpi=100)
     patch = plt.imshow(frames[0])
     plt.axis('off')
@@ -32,70 +35,83 @@ def save_frames_as_gif(frames, episode, path='./gif/'):
     plt.close()
 
 
-# simple helper function to compute the sum of a power series
-def q_max(discount, length):
-    a = np.ones(length) + discount
-    b = np.arange(length)
-    y = np.power(a, b)
-    return y.sum()
-
-
 class Agent:
-    """define a general Agent class, which contains the common properties and methods of a reinforcement learning
+    """define a general Agent class, which contains the common properties and methods of a DQN reinforcement learning
     agent.
     """
 
     def __init__(self,
                  env,
-                 alpha=0.,
-                 layer_depth=128,
-                 layer_number=1,
-                 mem_size=1000000,
-                 batch_size=256,
-                 target_update=500,
-                 epsilon=0.001,
-                 epsilon_decay=0.99,
-                 max_episode=1000,
-                 discount=0.99):
+                 name='test',
+                 layer_depth=LAYER_DEPTH,
+                 layer_number=LAYER_NUMBERS,
+                 mem_size=MEM_SIZE,
+                 batch_size=BATCH_SIZE,
+                 target_update=TARGET_UPDATE,
+                 epsilon_init=EPSILON_INIT,
+                 epsilon_decay=EPSILON_DECAY,
+                 epsilon_final=EPSILON_FINAL,
+                 max_length=MAX_LENGTH,
+                 discount=DISCOUNT,
+                 alpha=ALPHA,
+                 fail_percent_init=FAIL_PERCENT_INIT,
+                 fail_percent_final=FAIL_PERCENT_FINAL):
 
-        """
-        constructor for the general agent class
+        # define class name and create directories
+        self.name = name
+        self.make_directories()
 
-        :param env: the environment for learning
-        :param q_table_name: specify a csv file for initialise the q_table, e.g. load an existing q table;
-                             if None, q_table will be uniformly initialised to 0.9.
-        :param q_count_name: specify a csv file for initialise the q_count, e.g. load an existing q count;
-                             if None, q_count will be uniformly initialised to 0.9.
-        :param epsilon: epsilon-greedy parameter
-        :param discount: reward discount rate
-        """
-
-        # define class attributes
+        # environment parameters
         self.env = env
         self.state_size = int(self.env.observation_space.shape[0])
         self.action_size = int(self.env.action_space.n)
 
-        self.batch_size = batch_size
-        self.target_update = target_update
-        self.alpha = alpha
-
-        self.epsilon = epsilon
+        # RL agent parameters
+        self.epsilon_init = epsilon_init
         self.epsilon_decay = epsilon_decay
-        self.epsilon_final = epsilon
+        self.epsilon_final = epsilon_final
+        self.epsilon = self.epsilon_init
         self.discount = discount
-        self.max_episode = max_episode
-        self.fail_percent = 0.05
 
+        # initialise replay memory and its counter
         self.mem_size = mem_size
+        self.replay_memory = np.zeros((self.mem_size, self.state_size * 2 + 3), dtype=np.float32)
         self.mem_count = 0
-        self.replay_memory = np.zeros((mem_size, self.state_size * 2 + 3), dtype=np.float32)
 
-        self.Q_max = q_max(self.discount, self.max_episode)
-        self.priority = np.ones(mem_size, dtype=np.float32)  # *self.Q_max  # priority for experience replay
+        # initialise priority array
+        self.priority = np.ones(self.mem_size, dtype=np.float32)
 
+        # construct policy and target networks and initialise their parameters
         self.policy_network = QN(self.state_size, self.action_size, layer_depth, layer_number)
         self.target_network = QN(self.state_size, self.action_size, layer_depth, layer_number)
         self.target_network.set_weights(self.policy_network)
+        self.batch_size = batch_size
+        self.target_update = target_update
+        self.alpha = alpha
+        self.max_length = max_length
+        self.fail_percent_init = fail_percent_init
+        self.fail_percent_final = fail_percent_final
+        self.fail_percent = self.fail_percent_init
+
+    def make_directories(self):
+        """
+        create directories for storing data
+        """
+        if not os.path.exists(self.name):
+            os.makedirs(self.name)
+
+        dirs = ['training', 'testing']
+        sub_dirs = ['models', 'csv', 'GIFs']
+
+        for d in dirs:
+            temp = "%s/%s" % (self.name, d)
+            if not os.path.exists(temp):
+                os.makedirs(temp)
+
+            for sd in sub_dirs:
+                temp = "%s/%s/%s" % (self.name, d, sd)
+                if not os.path.exists(temp):
+                    os.makedirs(temp)
 
     def action_epsilon_greedy(self, state):
         """given a state, select a epsilon_greedy action"""
@@ -121,86 +137,65 @@ class Agent:
         # return the action and the boolean
         return action, is_best
 
-    def remember(self, state, new_state, action, reward, done):
+    def action_greedy(self, state):
+        """given a state, select the greedy action"""
 
+        # get Q(s,a)
+        Q_values = self.policy_network.predict(state)
+
+        # get best action
+        action = Q_values.argmax()
+
+        # return the action
+        return action
+
+    def remember(self, state, new_state, action, reward, done):
+        """
+        store the information into replay memory
+        """
+
+        # set up the index for store the memory
         if self.mem_count < self.mem_size:
             index = self.mem_count
-
         else:
-            # index = self.mem_count % self.mem_size
-            index = np.random.choice(self.mem_size)
+            index = np.random.choice(self.mem_size)  # eliminate a random memory if the replay memory is full
 
-        # print(self.mem_count, index)
         self.replay_memory[index, :] = *state, *new_state, action, reward, done
+
+        # initialising the priority with the existing max
         self.priority[index] = self.priority[:min(self.mem_count + 1, self.mem_size)].max()
         self.mem_count += 1
 
-    # def batch_sample_per(self, episode, percent=0.2):
-    #     # set sample pool
-    #     pool_size = min(self.mem_size, self.mem_count)
-    #     memory = self.replay_memory[:pool_size, :]
-    #
-    #     p = np.ones(pool_size) / pool_size
-    #
-    #     if self.alpha != 0.:
-    #         p = self.priority[:pool_size]
-    #         temp = p.argsort()
-    #         p[temp] = np.arange(pool_size) + 1
-    #
-    #         # calculate sampling probability
-    #         p = p ** self.alpha
-    #         p = p / p.sum()
-    #
-    #     # prioritised sample and make sure the sample contains certain amount of failure experience
-    #     temp = np.arange(pool_size)
-    #
-    #     fail_batch_size = min(episode, int(percent * self.batch_size))
-    #     fail_idx = temp[memory[:, -1].astype('bool')]
-    #     fail_memory = memory[fail_idx]
-    #     fail_p = p[fail_idx]
-    #     fails_number = len(fail_memory)
-    #
-    #     f_idx = np.random.choice(fails_number, fail_batch_size, replace=False, p=fail_p / fail_p.sum())
-    #     batch_fail = fail_memory[f_idx]
-    #     p_fail = fail_p[f_idx]/fail_p.sum() * fail_batch_size / self.batch_size
-    #     idx_fail = fail_idx[f_idx]
-    #
-    #     other_batch_size = self.batch_size - fail_batch_size
-    #     other_idx = np.delete(temp, idx_fail)
-    #     other_memory = memory[other_idx]
-    #     other_p = p[other_idx]
-    #     other_number = len(other_memory)
-    #
-    #     o_idx = np.random.choice(other_number, other_batch_size, replace=False, p=other_p / other_p.sum())
-    #     batch_other = other_memory[o_idx]
-    #     p_other = other_p[o_idx]/other_p.sum() * (1 - fail_batch_size / self.batch_size)
-    #     idx_other = other_idx[o_idx]
-    #
-    #     batch = np.concatenate((batch_fail, batch_other))
-    #     p = np.concatenate((p_fail, p_other))
-    #     idx = np.concatenate((idx_fail, idx_other))
-    #
-    #     fails = batch[:, -1].astype('bool')
-    #     print(len(batch[fails]))
-    #     print(p)
-    #
-    #     # failure_samples = 0
-    #     # i = 0
-    #     # while failure_samples < min(episode, int(percent * self.batch_size)):
-    #     #     idx = np.random.choice(pool_size, self.batch_size, replace=False)
-    #     #     temp = memory[idx, -1].astype('bool')
-    #     #     failure_samples = len(temp[temp])
-    #     #     i += 1
-    #     #
-    #     # print(failure_samples, i)
-    #
-    #     # batch = memory[idx]
-    #     # p = p[idx]
-    #
-    #     # return sample
-    #     return batch, idx, p
+    def batch_sample_per(self, episode):
+        """
+        prioritised replay memory sampling
+        """
+        # set sample pool
+        pool_size = min(self.mem_size, self.mem_count)
+        memory = self.replay_memory[:pool_size, :]
+
+        p = np.ones(pool_size) / pool_size
+
+        if self.alpha != 0.:
+            p = self.priority[:pool_size]
+            temp = p.argsort()
+            p[temp] = np.arange(pool_size) + 1
+
+            # calculate sampling probability
+            p = p ** self.alpha
+            p = p / p.sum()
+
+        idx = np.random.choice(pool_size, self.batch_size, replace=False, p=p)
+        batch = memory[idx]
+        p = p[idx]
+
+        # return sample
+        return batch, idx, p
 
     def batch_sample(self, episode):
+        """
+        replay memory sampling, a certain percentage of failed experiences is ensured in the batch
+        """
         # set sample pool
         pool_size = min(self.mem_size, self.mem_count)
         memory = self.replay_memory[:pool_size, :]
@@ -208,11 +203,13 @@ class Agent:
         # ensure that at least a certain percentage samples a failed experience
         temp = np.arange(pool_size)
 
+        # ensure that recent 2 memories a selected
         if self.mem_count < self.mem_size:
             recent_idx = temp[-2:]
         else:
             recent_idx = np.array([], dtype=int)
 
+        # sample failed experiences
         fail_batch_size = min(episode, int(self.fail_percent * self.batch_size))
         fail_idx = temp[memory[:, -1].astype('bool')]
         f_idx = np.random.choice(fail_idx, fail_batch_size, replace=False)
@@ -222,17 +219,20 @@ class Agent:
         other_idx = np.delete(other_idx, recent_idx)
         o_idx = np.random.choice(other_idx, self.batch_size-fail_batch_size-len(recent_idx), replace=False)
 
+        # combine the samples
         idx = np.concatenate((recent_idx, f_idx, o_idx))
         batch = memory[idx]
 
-        fails = batch[:, -1].astype('bool')
-        print(len(batch), len(batch[fails]), len(batch[fails])/len(batch))
+        # fails = batch[:, -1].astype('bool')
+        # print(len(batch), len(batch[fails]), len(batch[fails])/len(batch))
 
         # return sample
         return batch
 
-    # train the agent
-    def train(self, episodes=1000, save_every=20):
+    def train(self, episodes=1000, save_every=20, test_every=100, test_size=1000):
+        """
+        train the agent
+        """
 
         # record training history
         hist = []
@@ -259,18 +259,13 @@ class Agent:
             while not done:
                 # choose epsilon greedy action
                 action, is_best = self.action_epsilon_greedy(state)
-                # action, is_best = self.action_boltzmann(state, episode)
-                # _thread.start_new_thread(print, (action, is_best))
 
                 old_state = state
 
                 # march one step and receive feedback
                 state, reward, done, _ = self.env.step(action)
 
-                # if done:
-                #     print(self.policy_network.predict(state))
-
-                # update records and
+                # update records
                 score += reward
                 t += 1
                 self.remember(old_state, state, action, reward, done)
@@ -278,10 +273,10 @@ class Agent:
 
                 # terminate episode if the agent survives. modify after the memory record so that only termination with
                 # failure will be labeled
-                if t == self.max_episode and not done:
+                if t == self.max_length and not done:
                     done = True
                     self.fail_percent = 0.5
-                    self.target_update = 50000#int(min(self.target_update+500, 50000))
+                    self.target_update = 50000  # int(min(self.target_update+500, 50000))
                     self.target_network.set_weights(self.policy_network)
 
                 # else:
@@ -301,12 +296,15 @@ class Agent:
             # intermediate savings
             if record:
                 # pass
-                _thread.start_new_thread(self.record, (episode, hist, frames))
+                _thread.start_new_thread(self.record, (episode, hist, frames, "%s/%s" % (self.name, "training")))
 
-    def record(self, episode, hist, frames):
-        self.policy_network.model.save("models/model_training_%d.h5" % episode)
-        np.savetxt("csv/hist.csv", hist, delimiter=",")
-        save_frames_as_gif(frames, episode)
+    def test(self, name, episodes, save_every=20):
+        pass
+
+    def record(self, episode, hist, frames, DIR):
+        self.policy_network.model.save("%s/models/model_training_%d.h5" % (episode, DIR))
+        np.savetxt("%s/csv/hist.csv" % DIR, hist, delimiter=",")
+        save_frames_as_gif(frames, episode, "%s/GIFs/" % DIR)
 
     def batch_training(self, episode, train_type="double DQN"):
         # batch, batch_idx, p = self.batch_sample_per(episode)
@@ -319,14 +317,12 @@ class Agent:
         rewards = batch[:, -2].astype(int)
         terminal_states = batch[:, -1].astype('bool')
 
-        # print(terminal_states)
-
         # define indices for later use
         index = np.arange(self.batch_size)
 
         # predict Q(s, a) using Q nets
         q_values = self.policy_network.predict(old_states)
-        prediction = q_values.copy()
+        # prediction = q_values.copy() when using PER
 
         # calculate updates based on selections
         if train_type == "DQN":
@@ -345,32 +341,24 @@ class Agent:
 
         # clear target next Q values if it is terminal states
         q_update[terminal_states] = 0
-        # print(index)
 
         # update Q for training
         q_values[index, actions] = rewards + self.discount * q_update
-        # q_values = q_values.clip(0, self.Q_max)
 
-        # exploit the symmetric property of the problem
-        # old_states = np.concatenate((old_states, -old_states), axis=0)
-        # q_values = np.concatenate((q_values, q_values[:, ::-1]), axis=0)
-        # p = np.concatenate((p / 2, p / 2), axis=0)
-
-        # sample weights
+        # set sample weights when using PER
         # beta = min(0.4 * 1.001 ** episode, 1.)
         # w = (self.batch_size * p) ** (-beta)
         # w = w / w.max()
         # w = np.ones(self.batch_size)
 
         # train the policy network
-        self.policy_network.model.fit(old_states, q_values, verbose=1)  # sample_weight=w , batch_size=self.batch_size
-        # callbacks=[self.policy_network.tensorboard_callback])#sample_weight=w,
+        self.policy_network.model.fit(old_states, q_values, verbose=1)  # sample_weight=w when using PER
 
-        # update priority
-        prediction = self.policy_network.predict(old_states)
-        delta = np.abs(prediction - q_values)[index, actions]
+        # update priority using PER
+        # prediction = self.policy_network.predict(old_states)
+        # delta = np.abs(prediction - q_values)[index, actions]
         # self.priority[batch_idx] = delta
-        _thread.start_new_thread(print, (prediction.max(), prediction.min(), delta.max(), delta.min(), delta.mean()))
+        # _thread.start_new_thread(print, (prediction.max(), prediction.min(), delta.max(), delta.min(), delta.mean()))
         # _thread.start_new_thread(print, (np.sort(w),))
 
         if self.mem_count % self.target_update == 0:
