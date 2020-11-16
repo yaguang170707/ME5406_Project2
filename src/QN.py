@@ -29,7 +29,7 @@ def constructNN(input_size, output_size, layer_depth, layer_number):
     return model, tensorboard_callback
 
 
-class QN():
+class QN:
     def __init__(self, input_size, output_size, layer_depth, layer_number):
         self.model, self.tensorboard_callback = constructNN(input_size, output_size, layer_depth, layer_number)
 

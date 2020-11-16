@@ -14,7 +14,7 @@ from gym.envs.classic_control import rendering
 from problem_parameters import *
 
 
-class doubleInvertedPendulum(gym.Env):
+class DoubleInvertedPendulum(gym.Env):
     """
     Description:
         This is a custom environment, which defines a double inverted pendulum problem. There is no friction
@@ -188,8 +188,8 @@ class doubleInvertedPendulum(gym.Env):
             observations[0] = 0.
             done = abs(alpha)>alpha_limit or abs(beta)>beta_limit
 
-        if done:
-            reward = -100
+        # if done:
+        #     reward = -100
 
         return observations, reward, done, {}
 
@@ -239,15 +239,15 @@ class doubleInvertedPendulum(gym.Env):
             self.viewer = rendering.Viewer(w_window, h_window)
 
             # create robot object and ghost robots for periodic display
-            self.robot = robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
+            self.robot = Robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
             self.robot.add_to(self)
 
             # plot ghost robots only if x_limit is ignored
             if ignore_x_limit:
-                self.robot_ghost_l = robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
+                self.robot_ghost_l = Robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
                 self.robot_ghost_l.add_to(self)
 
-                self.robot_ghost_r = robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
+                self.robot_ghost_r = Robot(w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2)
                 self.robot_ghost_r.add_to(self)
 
             # create the track
@@ -283,8 +283,9 @@ class doubleInvertedPendulum(gym.Env):
             self.viewer.close()
             self.viewer = None
 
+
 # define a class that handles the creation of graphical objects for visualisation
-class robot():
+class Robot:
     def __init__(self, w_robo, h_robo, d_wheel, w_arm, s_L1, s_L2):
         self.cart, self.cart_trans = self.create_cart(w_robo, h_robo)
         self.wheel_l, self.wheel_l_trans = self.create_wheel(w_robo, h_robo, d_wheel, -1)

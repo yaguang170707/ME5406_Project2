@@ -1,7 +1,7 @@
 import numpy as np
 
 # number of force levels
-N_a = 2
+N_a = 11
 
 # Amplitude of applied force
 force = 100.

@@ -97,33 +97,6 @@ class Agent:
         self.target_network = QN(self.state_size, self.action_size, layer_depth, layer_number)
         self.target_network.set_weights(self.policy_network)
 
-    # def action_boltzmann(self, state, episode):
-    #     """given a state, select a action based on boltzmann distribution"""
-    #     # get Q(s,a) and normalise
-    #     Q_values = self.policy_network.predict(state)[0]
-    #     Q_values = Q_values - Q_values.min()
-    #     Q_values = Q_values / Q_values.max()
-    #
-    #     # get best action
-    #     ch = Q_values.argmax()
-    #
-    #     # calculate boltzmann distribution
-    #     T = 1 / (episode / 10000 + 0.001) + 1
-    #     self.epsilon = T
-    #     weights = np.exp(Q_values / T)
-    #
-    #     # normalise
-    #     weights = weights / weights.sum()
-    #
-    #     # choose action
-    #     action = np.random.choice(self.action_size, p=weights)
-    #
-    #     # check if the chosen one is the best
-    #     is_best = action == ch
-    #
-    #     # return the action and the boolean
-    #     return action, is_best
-
     def action_epsilon_greedy(self, state):
         """given a state, select a epsilon_greedy action"""
 
@@ -308,7 +281,9 @@ class Agent:
                 if t == self.max_episode and not done:
                     done = True
                     self.fail_percent = 0.5
-                    self.target_update = int(min(self.target_update+500, 50000))
+                    self.target_update = 50000#int(min(self.target_update+500, 50000))
+                    self.target_network.set_weights(self.policy_network)
+
                 # else:
                 #     self.fail_percent = 0.05
 
