@@ -13,7 +13,7 @@ MEM_SIZE = 1000000
 BATCH_SIZE = 256
 
 # training interval for updating target network
-TARGET_UPDATE = 500,
+TARGET_UPDATE = 500
 
 # initial value for exploration parameter
 EPSILON_INIT = 1.0

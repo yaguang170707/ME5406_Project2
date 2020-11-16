@@ -4,13 +4,15 @@ from Agent import Agent
 
 if __name__ == "__main__":
 
+    # create an environment
     env = DoubleInvertedPendulum()
     # env = gym.make("CartPole-v0")
 
-    agent = Agent(env)
-    
-    # agent = agent.load_model("model_training_500.h5")
+    # create an agent
+    agent = Agent(env, 'training')
 
-    agent.train(episodes=20000, save_every=10)
+    # train the agent
+    agent.train(episodes=2000, save_every=20, testing=False)
 
+    # closing
     agent.env.close()
