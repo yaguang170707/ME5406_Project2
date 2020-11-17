@@ -223,7 +223,7 @@ class DoubleInvertedPendulum(gym.Env):
         d_wheel = w_robo/4.
 
         # robo vertical location
-        robo_y = d_wheel/2 + h_robo/2 + h_window/5
+        robo_y = d_wheel/2 + h_robo/2 + h_window/10
 
         # track vertical location
         track_y = robo_y - d_wheel/2 - h_robo/2

@@ -2,10 +2,10 @@
 import numpy as np
 
 # number of force levels
-N_a = 11
+N_a = 5
 
 # Amplitude of applied force
-F_max = 100.
+F_max = 120.
 
 # Gravitational acceleration
 g = 9.8
@@ -17,13 +17,13 @@ M = 1.5
 m1 = 0.5
 
 # Mass of upper arm
-m2 = 0.5
+m2 = 0.75
 
 # Length of lower arm
 L1 = 0.5
 
 # Length of upper arm
-L2 = 0.5
+L2 = 0.75
 
 # Gravity centre of lower arm
 l1 = .5 * L1
@@ -38,14 +38,14 @@ I1 = m1*L1/12.
 I2 = m2*L2/12.
 
 # Horizontal movement boundary and the switch for ignoring it
-x_limit = 1.5*(L1+L2)
+x_limit = (L1+L2)
 ignore_x_limit = False  # if true, the x_limit values is only used for visualisation purposes
 
 # Lower arm degree limit
 alpha_limit = 20*np.pi/180.
 
 # upper arm degree limit
-beta_limit = 15*np.pi/180.
+beta_limit = 10*np.pi/180.
 
 # Time step
 dt = 0.02

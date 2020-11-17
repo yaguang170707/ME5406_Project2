@@ -25,7 +25,7 @@ EPSILON_DECAY = 0.99
 EPSILON_FINAL = 0.001
 
 # max length of an episode
-MAX_LENGTH = 1000
+MAX_LENGTH = 500
 
 # reward discount rate
 DISCOUNT = 0.99
@@ -34,7 +34,7 @@ DISCOUNT = 0.99
 ALPHA = 0.
 
 # initial portion of failed experience kept in the training minibatch
-FAIL_PERCENT_INIT = 0.05
+FAIL_PERCENT_INIT = 0.
 
 # final portion of failed experience kept in the training minibatch
 FAIL_PERCENT_FINAL = 0.5

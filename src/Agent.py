@@ -5,7 +5,6 @@ import matplotlib as mpl
 from matplotlib import animation
 import matplotlib.pyplot as plt
 import _thread
-from tensorflow.keras.models import load_model
 from problem_parameters import *
 from agent_parameters import *
 
@@ -52,7 +51,7 @@ class Agent:
                  epsilon_init=EPSILON_INIT,
                  epsilon_decay=EPSILON_DECAY,
                  epsilon_final=EPSILON_FINAL,
-                 max_length=MAX_LENGTH,
+                 max_length=int(MAX_LENGTH),
                  discount=DISCOUNT,
                  alpha=ALPHA,
                  fail_percent_init=FAIL_PERCENT_INIT,
@@ -120,10 +119,10 @@ class Agent:
         """given a state, select a epsilon_greedy action"""
 
         # get Q(s,a)
-        Q_values = self.policy_network.predict(state)
+        q_values = self.policy_network.predict(state)
 
         # get best action
-        ch = Q_values.argmax()
+        ch = q_values.argmax()
 
         # evenly distributed epsilon
         weights = np.ones(self.action_size) * self.epsilon / self.action_size
@@ -144,10 +143,10 @@ class Agent:
         """given a state, select the greedy action"""
 
         # get Q(s,a)
-        Q_values = self.policy_network.predict(state)
+        q_values = self.policy_network.predict(state)
 
         # get best action
-        action = Q_values.argmax()
+        action = q_values.argmax()
 
         # return the action
         return action
@@ -169,7 +168,7 @@ class Agent:
         self.priority[index] = self.priority[:min(self.mem_count + 1, self.mem_size)].max()
         self.mem_count += 1
 
-    def batch_sample_per(self, episode):
+    def batch_sample_per(self):
         """
         prioritised replay memory sampling
         """
@@ -206,7 +205,7 @@ class Agent:
         # ensure that at least a certain percentage samples a failed experience
         temp = np.arange(pool_size)
 
-        # ensure that recent 2 memories a selected
+        # ensure that recent 2 memories are selected
         if self.mem_count < self.mem_size:
             recent_idx = temp[-2:]
         else:
@@ -225,9 +224,6 @@ class Agent:
         # combine the samples
         idx = np.concatenate((recent_idx, f_idx, o_idx))
         batch = memory[idx]
-
-        # fails = batch[:, -1].astype('bool')
-        # print(len(batch), len(batch[fails]), len(batch[fails])/len(batch))
 
         # return sample
         return batch
@@ -253,8 +249,8 @@ class Agent:
             t = 0
             frames = []
 
-            # switch on/off record
-            save = episode % save_every == 0
+            # switch on/off saving
+            save = (episode+1) % save_every == 0
             # record the first frame
             if save:
                 frames.append(self.env.render(mode="rgb_array"))
@@ -268,38 +264,35 @@ class Agent:
                 # march one step and receive feedback
                 state, reward, done, _ = self.env.step(action)
 
-                # update records
+                # update replay memory
                 score += reward
                 t += 1
                 self.remember(old_state, state, action, reward, done)
 
                 # remember a symmetric memory
-                self.remember(-old_state, -state, np.abs(self.action_size - action - 1), reward, done)
+                # self.remember(-old_state, -state, np.abs(self.action_size - action - 1), reward, done)
 
-                # terminate episode if the agent survives. modify after the memory record so that only termination with
-                # failure will be labeled
+                # terminate episode if the agent survives. modify after remembering the memory so that only
+                # termination with failure will be labeled
                 if t == self.max_length and not done:
                     done = True
-                    self.fail_percent = 0.5
-                    self.target_update = 50000  # int(min(self.target_update+500, 50000))
+                    # self.fail_percent = self.fail_percent_final
+                    # self.target_update = 50000 # int(min(self.target_update+500, 50000))
 
-                # else:
-                #     self.fail_percent = 0.05
-
-                # record frame
+                # save frame
                 if save:
                     frames.append(self.env.render(mode="rgb_array"))
 
                 # QN batch training
                 if self.mem_count >= self.batch_size:
-                    self.batch_training(episode, train_type="double DQN")
+                    self.batch_training(episode, train_type="DQN")
 
             hist.append([episode, t, score, self.epsilon, is_best])
-            print("%d %d %d %.4f" % (episode, t, score, self.epsilon))
 
             # intermediate savings
-            if save:
-                _thread.start_new_thread(self.record, (episode, hist, frames, "%s/%s" % (self.name, "training")))
+            if save or t == self.max_length:
+                _thread.start_new_thread(self.record, (episode+1, hist, frames, "%s/%s" % (self.name, "training")))
+                print("%d %d %d %.4f" % (episode+1, t, score, self.epsilon))
 
             # enable testing during training
             if (episode+1) % test_every == 0 and testing:
@@ -357,7 +350,7 @@ class Agent:
                 if t == self.max_length and not done:
                     done = True
 
-                # record frame
+                # save frame
                 if save and gif_write:
                     frames.append(self.env.render(mode="rgb_array"))
 
@@ -377,7 +370,7 @@ class Agent:
 
     def batch_training(self, episode, train_type="double DQN"):
         """
-        train the policy network using sampled mini batch, use can specify preferred DQN algorithm
+        train the policy network using sampled mini batch, user can specify preferred DQN algorithm
         """
         # batch, batch_idx, p = self.batch_sample_per(episode)
         batch = self.batch_sample(episode)
@@ -431,19 +424,15 @@ class Agent:
         # delta = np.abs(prediction - q_values)[index, actions]
         # self.priority[batch_idx] = delta
 
-        # for debug
-        # _thread.start_new_thread(print, (prediction.max(), prediction.min(), delta.max(), delta.min(), delta.mean()))
-        # _thread.start_new_thread(print, (np.sort(w),))
-
+        # update target network
         if self.mem_count % self.target_update == 0:
             self.target_network.set_weights(self.policy_network)
 
-    def record(self, episode, hist, frames, path, save_model=True):
+    def record(self, episode, hist, frames, path):
         """
         record the model, gif, history etc.
         """
-        if save_model:
-            self.policy_network.model.save_weights("%s/models/model_training_%d.h5" % (path, episode))
+        self.policy_network.model.save_weights("%s/models/model_training_%d.h5" % (path, episode))
         np.savetxt("%s/csv/hist.csv" % path, hist, delimiter=",")
         save_frames_as_gif(frames, episode, "%s/GIFs/" % path)
 

@@ -3,7 +3,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 
 
-def constructNN(input_size, output_size, layer_depth, layer_number):
+def construct_nn(input_size, output_size, layer_depth, layer_number):
     """
     construct a NN based on the given parameters
     """
@@ -37,7 +37,7 @@ class QN:
     """
     def __init__(self, input_size, output_size, layer_depth, layer_number):
         # construct the NN
-        self.model = constructNN(input_size, output_size, layer_depth, layer_number)
+        self.model = construct_nn(input_size, output_size, layer_depth, layer_number)
 
     def predict(self, state):
         """
